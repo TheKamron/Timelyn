@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Timelyn</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="overlay" class="hidden">
+    <div class="overlay-inner">
+      <div id="overlay-setup">
+        <div class="overlay-icon">&#128274;</div>
+        <h2>Set Parent Password</h2>
+        <p class="overlay-desc">Create a password to protect Timelyn settings.<br />Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> to show/hide the window.</p>
+        <input type="password" id="setup-password" placeholder="New password" />
+        <input type="password" id="setup-confirm" placeholder="Confirm password" />
+        <p id="setup-error" class="overlay-error hidden">Passwords do not match</p>
+        <button id="setup-submit" class="overlay-btn">Set Password</button>
+      </div>
+      <div id="overlay-lock" class="hidden">
+        <div class="overlay-icon">&#128274;</div>
+        <h2>Device Locked</h2>
+        <p class="overlay-desc">This device was shut down improperly. Enter password to unlock.</p>
+        <input type="password" id="lock-password" placeholder="Parent password" />
+        <p id="lock-error" class="overlay-error hidden">Wrong password</p>
+        <button id="lock-submit" class="overlay-btn">Unlock</button>
+      </div>
+      <div id="overlay-quit" class="hidden">
+        <div class="overlay-icon">&#128274;</div>
+        <h2>Enter Password to Quit</h2>
+        <p class="overlay-desc">Enter the parent password to close Timelyn.</p>
+        <input type="password" id="quit-password" placeholder="Parent password" />
+        <p id="quit-error" class="overlay-error hidden">Wrong password</p>
+        <button id="quit-submit" class="overlay-btn">Confirm</button>
+        <button id="quit-cancel" class="overlay-btn overlay-btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="titlebar">
+      <span id="title">Timelyn</span>
+    <div id="titlebar-actions">
+      <button id="minimize-btn">&#9472;</button>
+      <button id="close-btn">&times;</button>
+    </div>
+  </div>
+
+  <div id="app">
+    <div id="status-container">
+      <span id="status-indicator"></span>
+      <span id="status-text">Connecting...</span>
+      <div id="server-url-text"></div>
+    </div>
+
+    <div id="pair-section">
+      <div id="pair-label">Pair Code</div>
+      <div id="pair-code">------</div>
+      <button id="regenerate-btn">Regenerate</button>
+    </div>
+
+    <div id="info-section">
+      <div id="device-name"></div>
+      <div id="paired-status"></div>
+    </div>
+
+    <div id="timer-section" class="hidden">
+      <div id="timer-label">Time Remaining</div>
+      <div id="timer-display">--:--</div>
+    </div>
+
+    <div id="error-section" class="hidden">
+      <span id="error-text"></span>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

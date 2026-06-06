@@ -1,0 +1,58 @@
+{
+  "name": "runtime-service",
+  "version": "1.0.0",
+  "description": "Runtime Service",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "start:hidden": "node launch.js",
+    "build": "electron-builder --win",
+    "build:dir": "electron-builder --win --dir"
+  },
+  "build": {
+    "appId": "runtime.service",
+    "productName": "Timelyn Runtime",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "compression": "maximum",
+    "toolsets": {
+      "winCodeSign": "1.0.0"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "executableName": "TimelynRuntime",
+      "icon": null,
+      "forceCodeSigning": false
+    },
+    "nsis": {
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Timelyn Runtime"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}",
+      "requestExecutionLevel": "user"
+    }
+  },
+  "dependencies": {
+    "socket.io-client": "^4.7.5"
+  },
+  "devDependencies": {
+    "electron": "^42.3.3",
+    "electron-builder": "^26.8.1"
+  }
+}
