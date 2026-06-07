@@ -272,7 +272,7 @@ function getServerUrl() {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     if (config.serverUrl) return config.serverUrl;
   } catch {}
-  return 'https://osontap.uz';
+  return 'https://api.osontap.uz';
 }
 
 let tray;
