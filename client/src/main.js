@@ -291,12 +291,9 @@ function createTray() {
       {
         label: 'Quit',
         click: () => {
-          isQuitting = true;
-          if (socket?.connected) socket.emit('going-offline');
-          clearInterval(timerInterval);
-          clearInterval(heartbeatTimer);
-          stopWatchdogs();
-          app.quit();
+          mainWindow?.show();
+          mainWindow?.focus();
+          mainWindow?.webContents.send('show-password-overlay', 'quit');
         }
       }
     ]);
