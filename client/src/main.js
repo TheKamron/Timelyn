@@ -131,6 +131,33 @@ function log(...args) {
   } catch {}
 }
 
+function setupAutoStart() {
+  if (process.platform !== 'win32') return;
+
+  if (app.isPackaged) {
+    app.setLoginItemSettings({ openAtLogin: true });
+    return;
+  }
+
+  const exePath = process.execPath;
+  const appDir = app.getAppPath();
+  const vbsPath = path.join(app.getPath('userData'), 'startup.vbs');
+
+  const vbsContent = [
+    'Set WshShell = CreateObject("WScript.Shell")',
+    `WshShell.CurrentDirectory = "${appDir.replace(/\\/g, '\\\\')}"`,
+    `WshShell.Run """${exePath.replace(/\\/g, '\\\\')}"" .", 0, False`,
+  ].join('\n');
+
+  try {
+    fs.writeFileSync(vbsPath, vbsContent, 'utf8');
+    app.setLoginItemSettings({ openAtLogin: true, path: vbsPath });
+    log('setupAutoStart: VBS launcher created at ' + vbsPath);
+  } catch (e) {
+    log('setupAutoStart FAIL: ' + e.message);
+  }
+}
+
 function startWatchdogs() {
   if (process.platform !== 'win32') return;
 
@@ -475,7 +502,7 @@ app.whenReady().then(() => {
   isSetupMode = !isPasswordSetup();
   isLocked = wasForceKilled && !isSetupMode;
   setRunningFlag();
-  app.setLoginItemSettings({ openAtLogin: true });
+  setupAutoStart();
   startWatchdogs();
   createWindow();
   createTray();
