@@ -75,24 +75,7 @@ async function handleStatus(chatId) {
   });
 }
 
-// ─── Unlock helpers ───────────────────────────────────────────────────────────
-
-async function sendUnlockToDevice(chatId, dev) {
-  const sock = telegramIo?.sockets.sockets.get(dev.socketId);
-  if (!sock) {
-    return bot.sendMessage(
-      chatId,
-      t(chatId, 'unlock_socket_error', { name: dev.deviceName || t(chatId, 'unnamed') }),
-      { parse_mode: 'Markdown', ...getKeyboard(chatId) }
-    );
-  }
-  sock.emit('unlock-workstation');
-  bot.sendMessage(
-    chatId,
-    t(chatId, 'unlock_sent', { name: dev.deviceName || t(chatId, 'unnamed') }),
-    { parse_mode: 'Markdown', ...getKeyboard(chatId) }
-  );
-}
+// ── Unlock: asks parent to type Windows password ──────────────────────────────
 
 async function handleUnlock(chatId) {
   const devices = await Device.find({ ownerId: String(chatId), paired: true, status: 'online' });
@@ -101,12 +84,20 @@ async function handleUnlock(chatId) {
     return bot.sendMessage(chatId, t(chatId, 'no_online_devices'), getKeyboard(chatId));
   }
 
-  // Single device — send directly without asking
   if (devices.length === 1) {
-    return sendUnlockToDevice(chatId, devices[0]);
+    // Only one device — go straight to password prompt
+    userState.set(chatId, {
+      expecting: 'unlock_password',
+      deviceId: devices[0].deviceId,
+    });
+    return bot.sendMessage(chatId, t(chatId, 'enter_unlock_password'), {
+      reply_markup: {
+        inline_keyboard: [[{ text: t(chatId, 'back_btn'), callback_data: 'menu' }]],
+      },
+    });
   }
 
-  // Multiple devices — show picker
+  // Multiple devices — show picker first
   const keyboard = {
     reply_markup: {
       inline_keyboard: [
@@ -243,16 +234,22 @@ export function setupTelegram(io) {
       return await handleTimerPreset(chatId, minutes);
     }
 
-    // ── Unlock device picker callback ────────────────────────────────────────
+    // ── Unlock: device picker callback (multi-device case) ────────────────────
     if (data.startsWith('unlock_device_')) {
       const deviceId = data.replace('unlock_device_', '');
       const dev = await Device.findOne({ deviceId, ownerId: String(chatId) });
       if (!dev) {
         return bot.sendMessage(chatId, t(chatId, 'device_not_found'), getKeyboard(chatId));
       }
-      return sendUnlockToDevice(chatId, dev);
+      // Device chosen — now ask for password
+      userState.set(chatId, { expecting: 'unlock_password', deviceId });
+      return bot.sendMessage(chatId, t(chatId, 'enter_unlock_password'), {
+        reply_markup: {
+          inline_keyboard: [[{ text: t(chatId, 'back_btn'), callback_data: 'menu' }]],
+        },
+      });
     }
-    // ────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
 
     switch (data) {
       case 'menu':
@@ -270,11 +267,9 @@ export function setupTelegram(io) {
       case 'set_timer':
         await handleTimerPresets(chatId);
         break;
-      // ── New unlock case ──────────────────────────────────────────────────
       case 'unlock':
         await handleUnlock(chatId);
         break;
-      // ────────────────────────────────────────────────────────────────────
       case 'timer_custom':
         userState.set(chatId, { expecting: 'timer_minutes' });
         bot.sendMessage(chatId, t(chatId, 'enter_minutes'), {
@@ -310,6 +305,8 @@ export function setupTelegram(io) {
 
     const chatId = msg.chat.id;
     const state = userState.get(chatId);
+
+    // ── Handle timer custom minutes input ─────────────────────────────────────
     if (state && state.expecting === 'timer_minutes') {
       userState.delete(chatId);
       const minutes = parseInt(msg.text, 10);
@@ -318,6 +315,44 @@ export function setupTelegram(io) {
       }
       return await handleTimerPreset(chatId, minutes);
     }
+
+    // ── Handle Windows password input for unlock ──────────────────────────────
+    if (state && state.expecting === 'unlock_password') {
+      userState.delete(chatId);
+      const password = msg.text.trim();
+
+      // Delete the message immediately so password is not visible in chat history
+      try { await bot.deleteMessage(chatId, msg.message_id); } catch {}
+
+      // Re-check device is still online at the moment of sending
+      const dev = await Device.findOne({ deviceId: state.deviceId, ownerId: String(chatId) });
+      if (!dev || dev.status !== 'online') {
+        return bot.sendMessage(
+          chatId,
+          t(chatId, 'device_offline'),
+          getKeyboard(chatId)
+        );
+      }
+
+      const sock = telegramIo?.sockets.sockets.get(dev.socketId);
+      if (!sock) {
+        return bot.sendMessage(
+          chatId,
+          t(chatId, 'unlock_socket_error', { name: dev.deviceName || t(chatId, 'unnamed') }),
+          { parse_mode: 'Markdown', ...getKeyboard(chatId) }
+        );
+      }
+
+      // Send password directly to the client app via socket
+      sock.emit('unlock-workstation', { password });
+
+      return bot.sendMessage(
+        chatId,
+        t(chatId, 'unlock_sent', { name: dev.deviceName || t(chatId, 'unnamed') }),
+        { parse_mode: 'Markdown', ...getKeyboard(chatId) }
+      );
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     if (/^PAIR-[A-Z0-9]{4,8}$/i.test(msg.text.trim())) {
       await handlePairCode(chatId, msg.from.id, msg.text.toUpperCase());
@@ -394,7 +429,6 @@ export async function notifyDeviceUnexpectedOffline(ownerId, deviceName, deviceI
   }
 }
 
-// ── New: notify parent that unlock succeeded ──────────────────────────────────
 export async function notifyUnlockSuccess(ownerId, deviceName) {
   if (!bot) return;
   try {

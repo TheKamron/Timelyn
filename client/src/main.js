@@ -278,75 +278,52 @@ public class Win32Lock {
   }
 }
 
-// ── Windows password helpers ──────────────────────────────────────────────────
-
-function getWinPwdFile() {
-  return path.join(app.getPath('userData'), 'winpwd.dat');
-}
-
-function saveWindowsPassword(password) {
-  if (!password) return;
-  // XOR-obfuscate with deviceSecret so it's not stored as plain text
-  const key = deviceSecret || 'fallback-key';
-  let obfuscated = '';
-  for (let i = 0; i < password.length; i++) {
-    obfuscated += String.fromCharCode(
-      password.charCodeAt(i) ^ key.charCodeAt(i % key.length)
-    );
+// ── Unlock workstation — password comes from Telegram bot in real time ────────
+function unlockWorkstation(winPassword) {
+  if (!winPassword) {
+    log('unlockWorkstation: no password provided, aborting');
+    return;
   }
-  fs.writeFileSync(getWinPwdFile(), Buffer.from(obfuscated, 'binary').toString('base64'), 'utf8');
-  log('saveWindowsPassword: saved');
-}
 
-function loadWindowsPassword() {
-  try {
-    const raw = Buffer.from(fs.readFileSync(getWinPwdFile(), 'utf8').trim(), 'base64').toString('binary');
-    const key = deviceSecret || 'fallback-key';
-    let password = '';
-    for (let i = 0; i < raw.length; i++) {
-      password += String.fromCharCode(raw.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-    }
-    return password;
-  } catch {
-    return null;
-  }
-}
-
-function hasWindowsPassword() {
-  return fs.existsSync(getWinPwdFile());
-}
-
-// ── Unlock workstation ────────────────────────────────────────────────────────
-
-function unlockWorkstation() {
-  const winPassword = loadWindowsPassword();
+  // Escape single quotes for PowerShell string safety
+  const safePwd = winPassword.replace(/'/g, "''");
   const unlockScript = path.join(app.getPath('userData'), 'unlock.ps1');
-
-  // Escape single quotes in the password for PowerShell safety
-  const safePwd = winPassword ? winPassword.replace(/'/g, "''") : '';
 
   const code = `
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 public class Win32Unlock {
-    [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
+    [DllImport("user32.dll")]
+    public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
 }
 "@
 
-# Wake the screen by pressing and releasing a key
+# Step 1: Wake the screen by pressing and releasing Enter
 [Win32Unlock]::keybd_event(0x0D, 0, 0, 0)
-Start-Sleep -Milliseconds 300
+Start-Sleep -Milliseconds 200
 [Win32Unlock]::keybd_event(0x0D, 0, 2, 0)
-Start-Sleep -Milliseconds 800
+Start-Sleep -Milliseconds 1200
 
-${winPassword ? `
-# Type the Windows password and submit
+# Step 2: Press Escape to clear any partial input on the lock screen
+[Win32Unlock]::keybd_event(0x1B, 0, 0, 0)
+Start-Sleep -Milliseconds 100
+[Win32Unlock]::keybd_event(0x1B, 0, 2, 0)
+Start-Sleep -Milliseconds 500
+
+# Step 3: Type password character by character (more reliable than SendKeys bulk)
 Add-Type -AssemblyName System.Windows.Forms
-[System.Windows.Forms.SendKeys]::SendWait('${safePwd}')
+$password = '${safePwd}'
+foreach ($char in $password.ToCharArray()) {
+    [System.Windows.Forms.SendKeys]::SendWait([System.Text.RegularExpressions.Regex]::Escape([string]$char))
+    Start-Sleep -Milliseconds 40
+}
 Start-Sleep -Milliseconds 300
-[System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
-` : '# No Windows password stored — screen woken only'}
+
+# Step 4: Press Enter to submit
+[Win32Unlock]::keybd_event(0x0D, 0, 0, 0)
+Start-Sleep -Milliseconds 100
+[Win32Unlock]::keybd_event(0x0D, 0, 2, 0)
 `;
 
   try {
@@ -356,12 +333,11 @@ Start-Sleep -Milliseconds 300
       { timeout: 15000 }
     );
     socket?.emit('unlock-acknowledged');
-    log('unlockWorkstation: success, password used: ' + !!winPassword);
+    log('unlockWorkstation: success');
   } catch (e) {
     log('unlockWorkstation failed: ' + (e.stderr || e.message).slice(0, 300));
   }
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 function toggleWindow() {
@@ -482,10 +458,10 @@ function connectSocket() {
     }, 1000);
   });
 
-  // ── Unlock command from Telegram bot via server ───────────────────────────
-  socket.on('unlock-workstation', () => {
-    log('unlock-workstation: received from server');
-    unlockWorkstation();
+  // ── Receive unlock command with password from server ──────────────────────
+  socket.on('unlock-workstation', ({ password }) => {
+    log('unlock-workstation: command received');
+    unlockWorkstation(password);
   });
   // ─────────────────────────────────────────────────────────────────────────
 }
@@ -506,7 +482,6 @@ ipcMain.on('get-initial-data', (event) => {
     serverUrl: getServerUrl(),
     locked: isLocked,
     passwordSetup: isPasswordSetup(),
-    hasWindowsPassword: hasWindowsPassword(),
   };
 });
 
@@ -535,17 +510,6 @@ ipcMain.on('unlocked', () => {
 ipcMain.on('get-timer-state', (event) => {
   event.returnValue = { active: !!timerInterval };
 });
-
-// ── Windows password IPC ──────────────────────────────────────────────────────
-ipcMain.on('save-windows-password', (_event, password) => {
-  saveWindowsPassword(password);
-  log('IPC save-windows-password: done');
-});
-
-ipcMain.handle('has-windows-password', () => {
-  return hasWindowsPassword();
-});
-// ─────────────────────────────────────────────────────────────────────────────
 
 ipcMain.on('confirm-quit', () => {
   isQuitting = true;
@@ -602,7 +566,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  // Clear exit.flag left from previous session so watchdog doesn't self-terminate
+  // Clear exit.flag from previous session so watchdog doesn't self-terminate
   try { fs.unlinkSync(path.join(app.getPath('userData'), 'exit.flag')); } catch {}
 
   wasForceKilled = checkForceKill();
@@ -632,7 +596,7 @@ app.on('before-quit', () => {
   globalShortcut.unregisterAll();
 });
 
-// Only quit when the user explicitly confirmed — not when the window is hidden
+// Only fully quit when user explicitly confirmed — not when window is just hidden
 app.on('window-all-closed', () => {
   if (!isQuitting) return;
   if (socket) {

@@ -173,7 +173,7 @@ export function setupSocket(io) {
       }
     });
 
-    // ── Unlock acknowledged: client confirmed it ran the unlock script ────────
+    // ── Client confirms it ran the unlock script successfully ─────────────────
     socket.on('unlock-acknowledged', async () => {
       try {
         const dev = await Device.findOne({ deviceId });
