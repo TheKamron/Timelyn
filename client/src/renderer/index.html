@@ -9,15 +9,37 @@
 <body>
   <div id="overlay" class="hidden">
     <div class="overlay-inner">
+
+      <!-- Setup: runs once, creates parent password + optional Windows password -->
       <div id="overlay-setup">
         <div class="overlay-icon">&#128274;</div>
         <h2>Set Parent Password</h2>
-        <p class="overlay-desc">Create a password to protect Timelyn settings.<br />Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> to show/hide the window.</p>
-        <input type="password" id="setup-password" placeholder="New password" />
-        <input type="password" id="setup-confirm" placeholder="Confirm password" />
+        <p class="overlay-desc">
+          Create a password to protect Timelyn settings.<br />
+          Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> to show/hide the window.
+        </p>
+        <input type="password" id="setup-password" placeholder="New password" autocomplete="new-password" />
+        <input type="password" id="setup-confirm" placeholder="Confirm password" autocomplete="new-password" />
         <p id="setup-error" class="overlay-error hidden">Passwords do not match</p>
+
+        <!-- Windows password section -->
+        <div id="winpwd-section">
+          <p class="winpwd-label">
+            &#128275; Optional: Windows login password<br />
+            <span class="winpwd-hint">Enables remote unlock via Telegram bot.</span>
+          </p>
+          <input
+            type="password"
+            id="setup-winpwd"
+            placeholder="Windows login password (optional)"
+            autocomplete="off"
+          />
+        </div>
+
         <button id="setup-submit" class="overlay-btn">Set Password</button>
       </div>
+
+      <!-- Lock: shown after unexpected shutdown -->
       <div id="overlay-lock" class="hidden">
         <div class="overlay-icon">&#128274;</div>
         <h2>Device Locked</h2>
@@ -26,6 +48,8 @@
         <p id="lock-error" class="overlay-error hidden">Wrong password</p>
         <button id="lock-submit" class="overlay-btn">Unlock</button>
       </div>
+
+      <!-- Quit confirmation -->
       <div id="overlay-quit" class="hidden">
         <div class="overlay-icon">&#128274;</div>
         <h2>Enter Password to Quit</h2>
@@ -35,11 +59,12 @@
         <button id="quit-submit" class="overlay-btn">Confirm</button>
         <button id="quit-cancel" class="overlay-btn overlay-btn-secondary">Cancel</button>
       </div>
+
     </div>
   </div>
 
   <div id="titlebar">
-      <span id="title">Timelyn</span>
+    <span id="title">Timelyn</span>
     <div id="titlebar-actions">
       <button id="minimize-btn">&#9472;</button>
       <button id="close-btn">&times;</button>
@@ -50,7 +75,6 @@
     <div id="status-container">
       <span id="status-indicator"></span>
       <span id="status-text">Connecting...</span>
-      <!-- <div id="server-url-text"></div> -->
     </div>
 
     <div id="pair-section">

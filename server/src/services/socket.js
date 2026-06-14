@@ -4,6 +4,7 @@ import {
   notifyDeviceOffline,
   notifyDeviceUnexpectedOffline,
   notifyTimerEnded,
+  notifyUnlockSuccess,
 } from './telegram.js';
 
 function generatePairCode() {
@@ -171,6 +172,19 @@ export function setupSocket(io) {
         console.error('Timer ended error:', error.message);
       }
     });
+
+    // ── Unlock acknowledged: client confirmed it ran the unlock script ────────
+    socket.on('unlock-acknowledged', async () => {
+      try {
+        const dev = await Device.findOne({ deviceId });
+        if (dev && dev.paired && dev.ownerId) {
+          await notifyUnlockSuccess(dev.ownerId, dev.deviceName);
+        }
+      } catch (error) {
+        console.error('Unlock acknowledged error:', error.message);
+      }
+    });
+    // ─────────────────────────────────────────────────────────────────────────
 
     socket.on('going-offline', async () => {
       try {

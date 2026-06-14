@@ -50,4 +50,12 @@ contextBridge.exposeInMainWorld('timelyn', {
     return ipcRenderer.sendSync('get-timer-state');
   },
 
+  // ── Windows password for remote unlock ──────────────────────────────────────
+  saveWindowsPassword: (password) => {
+    ipcRenderer.send('save-windows-password', password);
+  },
+  hasWindowsPassword: () => {
+    return ipcRenderer.invoke('has-windows-password');
+  },
+  // ───────────────────────────────────────────────────────────────────────────
 });

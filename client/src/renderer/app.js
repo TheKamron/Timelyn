@@ -18,14 +18,11 @@ function showOverlay(mode) {
   overlay.classList.remove('hidden');
 
   if (mode === 'setup') {
-    const inp = document.getElementById('setup-password');
-    setTimeout(() => inp?.focus(), 100);
+    setTimeout(() => document.getElementById('setup-password')?.focus(), 100);
   } else if (mode === 'unlock') {
-    const inp = document.getElementById('lock-password');
-    setTimeout(() => inp?.focus(), 100);
+    setTimeout(() => document.getElementById('lock-password')?.focus(), 100);
   } else if (mode === 'quit') {
-    const inp = document.getElementById('quit-password');
-    setTimeout(() => inp?.focus(), 100);
+    setTimeout(() => document.getElementById('quit-password')?.focus(), 100);
   }
 }
 
@@ -123,7 +120,6 @@ try {
     const totalSec = Math.ceil(remaining / 1000);
     const mins = Math.floor(totalSec / 60);
     const secs = totalSec % 60;
-    timerDisplay.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     timerSection.classList.remove('hidden');
     timerSection.classList.remove('warning', 'critical');
 
@@ -150,16 +146,27 @@ try {
     serverUrlText.textContent = 'Server: ' + initialData.serverUrl;
   }
 
+  // Show a hint if Windows password is already saved
+  if (initialData.hasWindowsPassword) {
+    const winpwdInput = document.getElementById('setup-winpwd');
+    if (winpwdInput) {
+      winpwdInput.placeholder = 'Windows password already saved (leave blank to keep)';
+    }
+  }
+
   if (initialData.locked) {
     showOverlay('unlock');
   } else if (!initialData.passwordSetup) {
     showOverlay('setup');
   }
 
+  // ── Setup form ─────────────────────────────────────────────────────────────
   document.getElementById('setup-submit')?.addEventListener('click', () => {
     const pwd = document.getElementById('setup-password').value;
     const confirmPwd = document.getElementById('setup-confirm').value;
+    const winPwd = document.getElementById('setup-winpwd')?.value?.trim();
     const err = document.getElementById('setup-error');
+
     if (pwd.length < 4) {
       err.textContent = 'Password must be at least 4 characters';
       err.classList.remove('hidden');
@@ -172,6 +179,12 @@ try {
     }
     err.classList.add('hidden');
     document.getElementById('setup-submit').textContent = 'Saving...';
+
+    // Save Windows password if provided
+    if (winPwd && winPwd.length > 0) {
+      api.saveWindowsPassword(winPwd);
+    }
+
     api.setupPassword(pwd);
   });
 
@@ -181,7 +194,11 @@ try {
   document.getElementById('setup-confirm')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') document.getElementById('setup-submit')?.click();
   });
+  document.getElementById('setup-winpwd')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('setup-submit')?.click();
+  });
 
+  // ── Lock form ──────────────────────────────────────────────────────────────
   document.getElementById('lock-submit')?.addEventListener('click', async () => {
     const pwd = document.getElementById('lock-password').value;
     const err = document.getElementById('lock-error');
@@ -201,6 +218,7 @@ try {
     if (e.key === 'Enter') document.getElementById('lock-submit')?.click();
   });
 
+  // ── Quit form ──────────────────────────────────────────────────────────────
   document.getElementById('quit-submit')?.addEventListener('click', async () => {
     const pwd = document.getElementById('quit-password').value;
     const err = document.getElementById('quit-error');

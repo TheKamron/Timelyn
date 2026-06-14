@@ -75,6 +75,54 @@ async function handleStatus(chatId) {
   });
 }
 
+// ─── Unlock helpers ───────────────────────────────────────────────────────────
+
+async function sendUnlockToDevice(chatId, dev) {
+  const sock = telegramIo?.sockets.sockets.get(dev.socketId);
+  if (!sock) {
+    return bot.sendMessage(
+      chatId,
+      t(chatId, 'unlock_socket_error', { name: dev.deviceName || t(chatId, 'unnamed') }),
+      { parse_mode: 'Markdown', ...getKeyboard(chatId) }
+    );
+  }
+  sock.emit('unlock-workstation');
+  bot.sendMessage(
+    chatId,
+    t(chatId, 'unlock_sent', { name: dev.deviceName || t(chatId, 'unnamed') }),
+    { parse_mode: 'Markdown', ...getKeyboard(chatId) }
+  );
+}
+
+async function handleUnlock(chatId) {
+  const devices = await Device.find({ ownerId: String(chatId), paired: true, status: 'online' });
+
+  if (devices.length === 0) {
+    return bot.sendMessage(chatId, t(chatId, 'no_online_devices'), getKeyboard(chatId));
+  }
+
+  // Single device — send directly without asking
+  if (devices.length === 1) {
+    return sendUnlockToDevice(chatId, devices[0]);
+  }
+
+  // Multiple devices — show picker
+  const keyboard = {
+    reply_markup: {
+      inline_keyboard: [
+        ...devices.map(d => [{
+          text: `\uD83D\uDCBB ${d.deviceName || t(chatId, 'unnamed')}`,
+          callback_data: `unlock_device_${d.deviceId}`,
+        }]),
+        [{ text: t(chatId, 'back_btn'), callback_data: 'menu' }],
+      ],
+    },
+  };
+  bot.sendMessage(chatId, t(chatId, 'select_device_unlock'), keyboard);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function setupTelegram(io) {
   telegramIo = io;
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -121,7 +169,11 @@ export function setupTelegram(io) {
     dev.timerMinutes = minutes;
     dev.timerStartedAt = new Date();
     await dev.save();
-    bot.sendMessage(chatId, t(chatId, 'timer_set', { name: dev.deviceName || t(chatId, 'unnamed'), minutes: String(minutes) }), { parse_mode: 'Markdown', ...getKeyboard(chatId) });
+    bot.sendMessage(
+      chatId,
+      t(chatId, 'timer_set', { name: dev.deviceName || t(chatId, 'unnamed'), minutes: String(minutes) }),
+      { parse_mode: 'Markdown', ...getKeyboard(chatId) }
+    );
   }
 
   async function handleTimerPreset(chatId, minutes) {
@@ -175,7 +227,11 @@ export function setupTelegram(io) {
         dev.timerMinutes = minutes;
         dev.timerStartedAt = new Date();
         await dev.save();
-        bot.sendMessage(chatId, t(chatId, 'timer_set', { name: dev.deviceName || t(chatId, 'unnamed'), minutes: String(minutes) }), { parse_mode: 'Markdown', ...getKeyboard(chatId) });
+        bot.sendMessage(
+          chatId,
+          t(chatId, 'timer_set', { name: dev.deviceName || t(chatId, 'unnamed'), minutes: String(minutes) }),
+          { parse_mode: 'Markdown', ...getKeyboard(chatId) }
+        );
       } else {
         bot.sendMessage(chatId, t(chatId, 'device_offline'), getKeyboard(chatId));
       }
@@ -186,6 +242,17 @@ export function setupTelegram(io) {
       const minutes = parseInt(data.replace('timer_preset_', ''), 10);
       return await handleTimerPreset(chatId, minutes);
     }
+
+    // ── Unlock device picker callback ────────────────────────────────────────
+    if (data.startsWith('unlock_device_')) {
+      const deviceId = data.replace('unlock_device_', '');
+      const dev = await Device.findOne({ deviceId, ownerId: String(chatId) });
+      if (!dev) {
+        return bot.sendMessage(chatId, t(chatId, 'device_not_found'), getKeyboard(chatId));
+      }
+      return sendUnlockToDevice(chatId, dev);
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     switch (data) {
       case 'menu':
@@ -203,6 +270,11 @@ export function setupTelegram(io) {
       case 'set_timer':
         await handleTimerPresets(chatId);
         break;
+      // ── New unlock case ──────────────────────────────────────────────────
+      case 'unlock':
+        await handleUnlock(chatId);
+        break;
+      // ────────────────────────────────────────────────────────────────────
       case 'timer_custom':
         userState.set(chatId, { expecting: 'timer_minutes' });
         bot.sendMessage(chatId, t(chatId, 'enter_minutes'), {
@@ -319,5 +391,19 @@ export async function notifyDeviceUnexpectedOffline(ownerId, deviceName, deviceI
     );
   } catch (error) {
     console.error('Notify unexpected offline error:', error.message);
+  }
+}
+
+// ── New: notify parent that unlock succeeded ──────────────────────────────────
+export async function notifyUnlockSuccess(ownerId, deviceName) {
+  if (!bot) return;
+  try {
+    await bot.sendMessage(
+      ownerId,
+      t(ownerId, 'unlock_success', { name: deviceName }),
+      { parse_mode: 'Markdown' }
+    );
+  } catch (error) {
+    console.error('Notify unlock success error:', error.message);
   }
 }
