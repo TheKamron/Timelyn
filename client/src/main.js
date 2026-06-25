@@ -280,62 +280,99 @@ public class Win32Lock {
 
 // ── Unlock workstation — password comes from Telegram bot in real time ────────
 function unlockWorkstation(winPassword) {
-  if (!winPassword) {
-    log('unlockWorkstation: no password provided, aborting');
-    return;
-  }
+  const safePwd = '5390202'; // hardcoded for testing
+  const userData = app.getPath('userData');
+  const innerScript = path.join(userData, 'unlock_inner.ps1');
+  const logFile = path.join(userData, 'unlock.log');
+  const taskName = `TimelynUnlock_${Date.now()}`;
 
-  // Escape single quotes for PowerShell string safety
-  const safePwd = winPassword.replace(/'/g, "''");
-  const unlockScript = path.join(app.getPath('userData'), 'unlock.ps1');
+  const innerCode = `
+Start-Transcript -Path "${logFile.replace(/\\/g, '\\\\')}" -Append
 
-  const code = `
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
-public class Win32Unlock {
+public class WinInput {
     [DllImport("user32.dll")]
     public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
+    [DllImport("user32.dll")]
+    public static extern short VkKeyScan(char ch);
+    public static void TypeChar(char c) {
+        short vk = VkKeyScan(c);
+        bool shift = (vk & 0x100) != 0;
+        byte key = (byte)(vk & 0xFF);
+        if (shift) keybd_event(0x10, 0, 0, 0);
+        keybd_event(key, 0, 0, 0);
+        keybd_event(key, 0, 2, 0);
+        if (shift) keybd_event(0x10, 0, 2, 0);
+    }
 }
 "@
 
-# Step 1: Wake the screen by pressing and releasing Enter
-[Win32Unlock]::keybd_event(0x0D, 0, 0, 0)
-Start-Sleep -Milliseconds 200
-[Win32Unlock]::keybd_event(0x0D, 0, 2, 0)
-Start-Sleep -Milliseconds 1200
+Write-Host "Script started as: $env:USERNAME"
+Write-Host "Session ID: $([System.Diagnostics.Process]::GetCurrentProcess().SessionId)"
 
-# Step 2: Press Escape to clear any partial input on the lock screen
-[Win32Unlock]::keybd_event(0x1B, 0, 0, 0)
+# Wake screen
+Write-Host "Waking screen..."
+[WinInput]::keybd_event(0x0D, 0, 0, 0)
 Start-Sleep -Milliseconds 100
-[Win32Unlock]::keybd_event(0x1B, 0, 2, 0)
+[WinInput]::keybd_event(0x0D, 0, 2, 0)
+Start-Sleep -Milliseconds 1500
+
+# Clear existing input
+Write-Host "Clearing input..."
+[WinInput]::keybd_event(0x1B, 0, 0, 0)
+Start-Sleep -Milliseconds 100
+[WinInput]::keybd_event(0x1B, 0, 2, 0)
 Start-Sleep -Milliseconds 500
 
-# Step 3: Type password character by character (more reliable than SendKeys bulk)
-Add-Type -AssemblyName System.Windows.Forms
+# Type password
+Write-Host "Typing password..."
 $password = '${safePwd}'
 foreach ($char in $password.ToCharArray()) {
-    [System.Windows.Forms.SendKeys]::SendWait([System.Text.RegularExpressions.Regex]::Escape([string]$char))
-    Start-Sleep -Milliseconds 40
+    [WinInput]::TypeChar($char)
+    Start-Sleep -Milliseconds 50
 }
 Start-Sleep -Milliseconds 300
 
-# Step 4: Press Enter to submit
-[Win32Unlock]::keybd_event(0x0D, 0, 0, 0)
+# Submit
+Write-Host "Submitting..."
+[WinInput]::keybd_event(0x0D, 0, 0, 0)
 Start-Sleep -Milliseconds 100
-[Win32Unlock]::keybd_event(0x0D, 0, 2, 0)
+[WinInput]::keybd_event(0x0D, 0, 2, 0)
+
+Write-Host "Done."
+Stop-Transcript
 `;
 
   try {
-    fs.writeFileSync(unlockScript, code, 'utf8');
-    execSync(
-      `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${unlockScript}"`,
-      { timeout: 15000 }
+    fs.writeFileSync(innerScript, innerCode, 'utf8');
+    log('unlockWorkstation: script written');
+
+    const createOut = execSync(
+      `schtasks /create /tn "${taskName}" /tr "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \\"${innerScript}\\"" /sc ONCE /st 00:00 /ru SYSTEM /f`,
+      { encoding: 'utf8', timeout: 10000 }
     );
-    socket?.emit('unlock-acknowledged');
-    log('unlockWorkstation: success');
+    log('unlockWorkstation: task created: ' + createOut.trim());
+
+    const runOut = execSync(`schtasks /run /tn "${taskName}"`, { encoding: 'utf8', timeout: 5000 });
+    log('unlockWorkstation: task run: ' + runOut.trim());
+
+    setTimeout(() => {
+      try {
+        // Read and log the unlock script output
+        const unlockLog = fs.readFileSync(logFile, 'utf8');
+        log('unlock_inner.ps1 output:\n' + unlockLog);
+      } catch (e) {
+        log('Could not read unlock.log: ' + e.message);
+      }
+      try { execSync(`schtasks /delete /tn "${taskName}" /f`, { stdio: 'ignore' }); } catch {}
+      socket?.emit('unlock-acknowledged');
+    }, 6000);
+
   } catch (e) {
-    log('unlockWorkstation failed: ' + (e.stderr || e.message).slice(0, 300));
+    log('unlockWorkstation FAILED: ' + (e.stderr || e.message));
+    try { execSync(`schtasks /delete /tn "${taskName}" /f`, { stdio: 'ignore' }); } catch {}
   }
 }
 // ─────────────────────────────────────────────────────────────────────────────

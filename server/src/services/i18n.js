@@ -14,7 +14,6 @@ const t = {
     my_devices_btn: '\uD83D\uDCF1 My Devices',
     connect_btn: '\uD83D\uDD17 Connect Device',
     status_btn: '\uD83D\uDCCA Status',
-    unlock_btn: '\uD83D\uDD13 Unlock Device',
     no_devices: 'You have no paired devices. Use \uD83D\uDD17 Connect Device to pair one.',
     your_devices: '*Your Devices:*',
     online: '\uD83D\uDFE2 Online',
@@ -68,7 +67,6 @@ const t = {
     my_devices_btn: '\uD83D\uDCF1 Мои устройства',
     connect_btn: '\uD83D\uDD17 Подключить устройство',
     status_btn: '\uD83D\uDCCA Статус',
-    unlock_btn: '\uD83D\uDD13 Разблокировать',
     no_devices: 'У вас нет подключенных устройств. Используйте \uD83D\uDD17, чтобы добавить.',
     your_devices: '*Ваши устройства:*',
     online: '\uD83D\uDFE2 Онлайн',
@@ -122,7 +120,6 @@ const t = {
     my_devices_btn: '\uD83D\uDCF1 Mening qurilmalarim',
     connect_btn: '\uD83D\uDD17 Qurilmani ulash',
     status_btn: '\uD83D\uDCCA Holat',
-    unlock_btn: '\uD83D\uDD13 Qurilmani ochish',
     no_devices: 'Sizda ulangan qurilmalar yo\'q. Ulash uchun \uD83D\uDD17 tugmasidan foydalaning.',
     your_devices: '*Sizning qurilmalaringiz:*',
     online: '\uD83D\uDFE2 Online',
@@ -194,9 +191,6 @@ export function getKeyboard(chatId) {
         [
           { text: t[lang].status_btn, callback_data: 'status' },
           { text: t[lang].timer_btn, callback_data: 'set_timer' },
-        ],
-        [
-          { text: t[lang].unlock_btn, callback_data: 'unlock' },
           { text: t[lang].language_btn, callback_data: 'language' },
         ],
       ],
